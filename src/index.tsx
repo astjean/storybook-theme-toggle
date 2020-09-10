@@ -1,21 +1,23 @@
 import React from 'react';
-import addons from '@storybook/addons';
-import { DARK_MODE_EVENT_NAME } from './constants';
-import { store } from './Tool';
+import { makeDecorator, StoryContext, StoryGetter, WrapperSettings } from '@storybook/addons';
+import { Theme, ThemeConfig } from './models';
+import parameters from './parameters';
+import { getConfig } from './shared';
 
-/**
- * Returns the current state of storybook's dark-mode
- */
-export function useDarkMode(): boolean {
-  const [isDark, setDark] = React.useState(store().current === 'dark');
+import { ThemeDecorator } from './decorators/react';
 
-  React.useEffect(() => {
-    const chan = addons.getChannel();
-    chan.on(DARK_MODE_EVENT_NAME, setDark);
-    return () => chan.off(DARK_MODE_EVENT_NAME, setDark);
-  }, []);
-
-  return isDark;
+function wrapper(getStory: StoryGetter, context: StoryContext, { parameters }: WrapperSettings) {
+  const config = getConfig(parameters as ThemeConfig | Theme[]);
+  
+  return (
+    <ThemeDecorator config={config}>
+      {getStory(context)}
+    </ThemeDecorator>
+  );
 }
 
-export * from './constants';
+export const withThemes = makeDecorator({ ...parameters, wrapper });
+
+if (module && module.hot && module.hot.decline) {
+  module.hot.decline();
+}

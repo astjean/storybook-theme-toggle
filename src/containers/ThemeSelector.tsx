@@ -1,217 +1,157 @@
-import React, { Component, Fragment, ReactElement } from 'react';
+import React, { Component, Fragment } from 'react';
 import memoize from 'memoizerific';
 
-import { Combo, Consumer, API } from '@storybook/api';
-import { Global, Theme as ThemeStyle } from '@storybook/theming';
-import { logger } from '@storybook/client-logger';
+import { API } from '@storybook/api';
+import { SET_STORIES } from '@storybook/core-events';
 
-import { IconButton, WithTooltip, TooltipLinkList } from '@storybook/components';
+import { Icons, IconButton, WithTooltip, TooltipLinkList } from '@storybook/components';
 
-import { PARAM_KEY as THEMES_PARAM_KEY, EVENTS } from '../constants';
-import { ColorIcon } from '../components/ColorIcon';
+import { CHANGE, THEME } from '../constants';
+import { Theme, ThemeSelectorItem } from '../models';
+import { getConfigFromApi, getSelectedTheme, getSelectedThemeName } from '../shared';
+
+import { ThemeStory } from './ThemeStory';
 import Palette from '../icons/Palette';
-
-interface GlobalState {
-  name: string | undefined;
-  selected: string | undefined;
-}
-
-interface Props {
-  api: API;
-}
-
-interface ThemeSelectorItem {
-  id: string;
-  title: string;
-  onClick: () => void;
-  value: string;
-  right?: ReactElement;
-}
-
-interface Theme {
-  name: string;
-  value: string;
-}
-
-interface ThemesParameter {
-  default?: string;
-  disable?: boolean;
-  values: Theme[];
-}
-
-interface ThemesConfig {
-  themes: Theme[] | null;
-  selectedTheme: string | null;
-  defaultThemeName: string | null;
-  disable: boolean;
-}
 
 const iframeId = 'storybook-preview-iframe';
 
 const createThemeSelectorItem = memoize(1000)(
   (
     id: string,
-    name: string,
-    value: string,
+    title: string,
+    color: string,
     hasSwatch: boolean,
-    change: (arg: { selected: string; name: string }) => void
+    change: (arg: { selected: string; expanded: boolean }) => void,
+    active: boolean,
   ): ThemeSelectorItem => ({
-    id: id || name,
-    title: name,
+    id,
+    title,
     onClick: () => {
-      change({ selected: value, name });
+      change({ selected: id, expanded: false });
     },
-    value,
-    right: hasSwatch ? <ColorIcon background={value} /> : undefined,
+    value: id,
+    left: hasSwatch ? <Icons icon="paintbrush" style={{
+      color: color,
+      height: 14,
+      width: 14
+    }} /> : undefined,
+    active,
   })
 );
 
-const getDisplayedItems = memoize(10)(
-  (
-    themes: Theme[],
-    selectedThemeColor: string | null,
-    change: (arg: { selected: string; name: string }) => void
-  ) => {
-    const themeSelectorItems = themes.map(({ name, value }) =>
-      createThemeSelectorItem(null, name, value, true, change)
-    );
+const getDisplayableState = memoize(10)(
+  (props: ThemeToolProps, state: ThemeToolState, change) => {
+    const { clearable, list } = getConfigFromApi(props.api);
+    const selectedThemeName = getSelectedThemeName(list, state.selected);
 
-    if (selectedThemeColor !== 'transparent') {
-      return [
-        createThemeSelectorItem('reset', 'Clear theme', 'transparent', null, change),
-        ...themeSelectorItems,
-      ];
+    let availableThemeSelectorItems: ThemeSelectorItem[] = [];
+    let selectedTheme: Theme;
+
+    if (selectedThemeName !== 'none' && clearable) {
+      availableThemeSelectorItems.push(
+        createThemeSelectorItem('none', 'Clear theme', 'transparent', null, change, false)
+      );
     }
 
-    return themeSelectorItems;
+    if (list.length) {
+      availableThemeSelectorItems = [
+        ...availableThemeSelectorItems,
+        ...list.map(({ color, name }) =>
+          createThemeSelectorItem(name, name, color, true, change, name === selectedThemeName)
+        ),
+      ];
+      selectedTheme = getSelectedTheme(list, selectedThemeName);
+    }
+
+    return {
+      items: availableThemeSelectorItems,
+      selectedTheme,
+      themes: list,
+    };
   }
 );
 
-const getSelectedThemeColor = (
-  themes: Theme[] = [],
-  currentSelectedValue: string,
-  defaultName: string
-): string => {
-  if (currentSelectedValue === 'transparent') {
-    return 'transparent';
-  }
+interface ThemeToolProps {
+  api: API;
+}
 
-  if (themes.find((theme) => theme.value === currentSelectedValue)) {
-    return currentSelectedValue;
-  }
+interface ThemeToolState {
+  decorator: boolean,
+  selected: string;
+  expanded: boolean;
+}
 
-  const defaultTheme = themes.find((theme) => theme.name === defaultName);
-  if (defaultTheme) {
-    return defaultTheme.value;
-  }
-
-  if (defaultName) {
-    const availableColors = themes.map((theme) => theme.name).join(', ');
-    logger.warn(
-      `Themes Addon: could not find the default color "${defaultName}".
-      These are the available colors for your story based on your configuration: ${availableColors}`
-    );
-  }
-
-  return 'transparent';
-};
-
-const getThemesConfig = ({ api, state }: Combo): ThemesConfig => {
-  const themesParameter = api.getCurrentParameter<ThemesParameter>(THEMES_PARAM_KEY);
-  const selectedThemeValue = state.addons[THEMES_PARAM_KEY] || null;
-
-  if (Array.isArray(themesParameter)) {
-    logger.warn(
-      'Addon Themes api has changed in Storybook 6.0. Please refer to the migration guide: https://github.com/storybookjs/storybook/blob/next/MIGRATION.md'
-    );
-  }
-
-  const isThemesEmpty = !themesParameter?.values?.length;
-  if (themesParameter?.disable || isThemesEmpty) {
-    // other null properties are necessary to keep the same return shape for Consumer memoization
-    return {
-      disable: true,
-      themes: null,
-      selectedTheme: null,
-      defaultThemeName: null,
-    };
-  }
-
-  return {
-    disable: false,
-    themes: themesParameter?.values,
-    selectedTheme: selectedThemeValue,
-    defaultThemeName: themesParameter?.default,
+export class ThemeSelector extends Component<ThemeToolProps, ThemeToolState> {
+  state: ThemeToolState = {
+    decorator: false,
+    selected: null,
+    expanded: false,
   };
-};
+  
+  private setStories = () => this.setState({ selected: null });
 
-export class ThemeSelector extends Component<Props> {
-  change = ({ selected, name }: GlobalState) => {
+  private setTheme = (theme: string) => this.setState({ selected: theme });
+
+  //private setDecorator = () => this.setState({ decorator: true });
+
+  componentDidMount() {
     const { api } = this.props;
-    if (typeof selected === 'string') {
-      api.setAddonState<string>(THEMES_PARAM_KEY, selected);
+    api.on(SET_STORIES, this.setStories);
+    api.on(THEME, this.setTheme);
+    //api.on(DECORATOR, this.setDecorator);
+  }
+
+  componentWillUnmount() {
+    const { api } = this.props;
+    api.off(SET_STORIES, this.setStories);
+    api.off(THEME, this.setTheme);
+    //api.off(DECORATOR, this.setDecorator);
+  }
+
+  change = (args: { selected: string; expanded: boolean }) => {
+    const { selected } = args;
+    const { api } = this.props;
+    const { list, onChange } = getConfigFromApi(api);
+    this.setState(args);
+    api.emit(CHANGE, selected);
+    if (typeof onChange === 'function') {
+      const selectedTheme = getSelectedTheme(list, selected);
+      onChange(selectedTheme);
     }
-    api.emit(EVENTS.UPDATE, { selected, name });
   };
 
   render() {
-    return (
-      <Consumer filter={getThemesConfig}>
-        {({
-          disable,
-          themes,
-          selectedTheme,
-          defaultThemeName,
-        }: ThemesConfig) => {
-          if (disable) {
-            return null;
-          }
-
-          const selectedThemeColor = getSelectedThemeColor(
-            themes,
-            selectedTheme,
-            defaultThemeName
-          );
-
-          return (
-            <Fragment>
-              {selectedThemeColor ? (
-                <Global
-                  styles={(theme: ThemeStyle) => ({
-                    [`#${iframeId}`]: {
-                      theme:
-                        selectedThemeColor === 'transparent'
-                          ? theme.background.content
-                          : selectedThemeColor,
-                    },
-                  })}
-                />
-              ) : null}
-              <WithTooltip
-                placement="top"
-                trigger="click"
-                closeOnClick
-                tooltip={({ onHide }) => (
-                  <TooltipLinkList
-                    links={getDisplayedItems(themes, selectedThemeColor, (i) => {
-                      this.change(i);
-                      onHide();
-                    })}
-                  />
-                )}
-              >
-                <IconButton
-                  key="theme-toggle"
-                  title="Toggle theme"
-                  active={selectedThemeColor !== 'transparent'}
-                >
-                  <Palette />
-                </IconButton>
-              </WithTooltip>
-            </Fragment>
-          );
-        }}
-      </Consumer>
+    const { decorator, expanded } = this.state;
+    const { items, selectedTheme, themes } = getDisplayableState(
+      this.props,
+      this.state,
+      this.change
     );
+
+    return items.length ? (
+      <Fragment>
+        {!decorator && (
+          <ThemeStory iframeId={iframeId} selectedTheme={selectedTheme} themes={themes} />
+        )}
+        <WithTooltip
+          placement="top"
+          trigger="click"
+          tooltipShown={expanded}
+          onVisibilityChange={(newVisibility: boolean) =>
+            this.setState({ expanded: newVisibility })
+          }
+          tooltip={<TooltipLinkList links={items} />}
+          closeOnClick
+        >
+          <IconButton
+            key="theme"
+            active={selectedTheme}
+            title="Change the theme of the preview"
+          >
+            <Palette />
+          </IconButton>
+        </WithTooltip>
+      </Fragment>
+    ) : null;
   }
 }
