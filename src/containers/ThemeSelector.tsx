@@ -76,14 +76,12 @@ interface ThemeToolProps {
 }
 
 interface ThemeToolState {
-  decorator: boolean,
   selected: string;
   expanded: boolean;
 }
 
 export class ThemeSelector extends Component<ThemeToolProps, ThemeToolState> {
   state: ThemeToolState = {
-    decorator: false,
     selected: null,
     expanded: false,
   };
@@ -92,20 +90,16 @@ export class ThemeSelector extends Component<ThemeToolProps, ThemeToolState> {
 
   private setTheme = (theme: string) => this.setState({ selected: theme });
 
-  //private setDecorator = () => this.setState({ decorator: true });
-
   componentDidMount() {
     const { api } = this.props;
     api.on(SET_STORIES, this.setStories);
     api.on(THEME, this.setTheme);
-    //api.on(DECORATOR, this.setDecorator);
   }
 
   componentWillUnmount() {
     const { api } = this.props;
     api.off(SET_STORIES, this.setStories);
     api.off(THEME, this.setTheme);
-    //api.off(DECORATOR, this.setDecorator);
   }
 
   change = (args: { selected: string; expanded: boolean }) => {
@@ -121,7 +115,7 @@ export class ThemeSelector extends Component<ThemeToolProps, ThemeToolState> {
   };
 
   render() {
-    const { decorator, expanded } = this.state;
+    const { expanded } = this.state;
     const { items, selectedTheme, themes } = getDisplayableState(
       this.props,
       this.state,
@@ -130,9 +124,7 @@ export class ThemeSelector extends Component<ThemeToolProps, ThemeToolState> {
 
     return items.length ? (
       <Fragment>
-        {!decorator && (
-          <ThemeStory iframeId={iframeId} selectedTheme={selectedTheme} themes={themes} />
-        )}
+        <ThemeStory iframeId={iframeId} selectedTheme={selectedTheme} themes={themes} />
         <WithTooltip
           placement="top"
           trigger="click"
@@ -146,7 +138,7 @@ export class ThemeSelector extends Component<ThemeToolProps, ThemeToolState> {
           <IconButton
             key="theme"
             active={selectedTheme}
-            title="Change the theme of the preview"
+            title="Change the theme"
           >
             <Palette />
           </IconButton>

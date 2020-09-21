@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 // @ts-ignore
 import { document } from 'global';
-
 import { Theme } from '../models';
 
 interface Props {

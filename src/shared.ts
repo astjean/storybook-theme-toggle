@@ -1,5 +1,4 @@
 import { API } from '@storybook/api';
-
 import { PARAM_KEY } from './constants';
 import { Theme, ThemeConfig } from './models';
 
